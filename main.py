@@ -196,7 +196,7 @@ def draw_level_1():
     # Draw far background quad - moves with parallax effect
     background_z = -600 + (elapsed_time * 80) % 80
     glBegin(GL_QUADS)
-    glColor3f(0.5, 0.8, 0.6)
+    glColor3f(0.2, 0.6, 1)
     glVertex3f(-600, -600, background_z)
     glVertex3f(600, -600, background_z)
     glVertex3f(600, 600, background_z)
@@ -416,7 +416,7 @@ def draw_menu():
     
     # Dark background
     glBegin(GL_QUADS)
-    glColor3f(0.1, 0.1, 0.15)
+    glColor3f(1, 1, 1)
     glVertex3f(-640, 0, -100)
     glVertex3f(640, 0, -100)
     glVertex3f(640, 720, -100)
@@ -424,14 +424,14 @@ def draw_menu():
     glEnd()
     
     # Title
-    draw_text_2d("STRATO QUEST", WINDOW_WIDTH // 2, 150, 
-                 color=(1.0, 1.0, 0.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("STRATO QUEST", WINDOW_WIDTH // 2, 150, 
+                 text_color=(0.5, 0.5, 0.5), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
     
     # Instructions
-    draw_text_2d("Press SPACE to Start", WINDOW_WIDTH // 2, 350,
-                 color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
-    draw_text_2d("or ESC to Quit", WINDOW_WIDTH // 2, 420,
-                 color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("Press SPACE to Start", WINDOW_WIDTH // 2, 350,
+                 text_color=(0.0, 0.0, 0.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("or ESC to Quit", WINDOW_WIDTH // 2, 420,
+                 text_color=(0.0, 0.0, 0.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
 
 
 def draw_level_select():
@@ -453,23 +453,15 @@ def draw_level_select():
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
-    glOrtho(0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, -1, 1)
+    gluOrtho2D(0, WINDOW_WIDTH, WINDOW_HEIGHT, 0)
     
     glMatrixMode(GL_MODELVIEW)
     glPushMatrix()
     glLoadIdentity()
     
-    glColor3f(0.0, 0.0, 0.0)
-    glBegin(GL_QUADS)
-    glVertex3f(0, 0, -1)
-    glVertex3f(WINDOW_WIDTH, 0, -1)
-    glVertex3f(WINDOW_WIDTH, WINDOW_HEIGHT, -1)
-    glVertex3f(0, WINDOW_HEIGHT, -1)
-    glEnd()
-    
     # Title
-    draw_text_2d("SELECT LEVEL", WINDOW_WIDTH // 2, 80,
-                 color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("SELECT LEVEL", WINDOW_WIDTH // 2, 80,
+                 text_color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
     
     # Draw level buttons - centered
     start_x = WINDOW_WIDTH // 2 - 400
@@ -479,19 +471,19 @@ def draw_level_select():
         
         # Highlight selected level
         if i == selected_level:
-            draw_text_2d(f"LEVEL {i + 1}", x_pos, y_pos,
-                        color=(1.0, 1.0, 0.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+            draw_text_with_border(f"LEVEL {i + 1}", x_pos, y_pos,
+                        text_color=(1.0, 1.0, 0.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
         else:
-            draw_text_2d(f"Level {i + 1}", x_pos, y_pos,
-                        color=(0.7, 0.7, 0.7), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+            draw_text_with_border(f"Level {i + 1}", x_pos, y_pos,
+                        text_color=(0.7, 0.7, 0.7), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
     
     # Instructions - centered
-    draw_text_2d("LEFT/RIGHT arrows to select", WINDOW_WIDTH // 2, 450,
-                 color=(0.8, 0.8, 0.8), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
-    draw_text_2d("ENTER to play", WINDOW_WIDTH // 2, 520,
-                 color=(0.8, 0.8, 0.8), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
-    draw_text_2d("ESC to back to menu", WINDOW_WIDTH // 2, 590,
-                 color=(0.8, 0.8, 0.8), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("LEFT/RIGHT arrows to select", WINDOW_WIDTH // 2, 450,
+                 text_color=(0.9, 0.9, 0.9), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("ENTER to play", WINDOW_WIDTH // 2, 520,
+                 text_color=(0.9, 0.9, 0.9), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("ESC to back to menu", WINDOW_WIDTH // 2, 590,
+                 text_color=(0.9, 0.9, 0.9), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
     
     glPopMatrix()
     glMatrixMode(GL_PROJECTION)
@@ -501,32 +493,22 @@ def draw_level_select():
 
 def draw_pause_menu():
     """Draw pause menu overlay with semi-transparent background"""
-    # Semi-transparent overlay (2D)
-    glClear(GL_DEPTH_BUFFER_BIT)
+    # Draw semi-transparent overlay (2D)
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
-    glOrtho(0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, -1, 1)
-    
+    gluOrtho2D(0, WINDOW_WIDTH, WINDOW_HEIGHT, 0)
     glMatrixMode(GL_MODELVIEW)
     glPushMatrix()
     glLoadIdentity()
     
-    glColor3f(0.0, 0.0, 0.0)
-    glBegin(GL_QUADS)
-    glVertex3f(0, 0, 0)
-    glVertex3f(WINDOW_WIDTH, 0, 0)
-    glVertex3f(WINDOW_WIDTH, WINDOW_HEIGHT, 0)
-    glVertex3f(0, WINDOW_HEIGHT, 0)
-    glEnd()
-    
     # Text
-    draw_text_2d("PAUSED", WINDOW_WIDTH // 2, 250,
-                 color=(1.0, 1.0, 0.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
-    draw_text_2d("Press ESC to continue", WINDOW_WIDTH // 2, 350,
-                 color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
-    draw_text_2d("SPACE to go back to menu", WINDOW_WIDTH // 2, 420,
-                 color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("PAUSED", WINDOW_WIDTH // 2, 250,
+                 text_color=(1.0, 1.0, 0.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("Press ESC to continue", WINDOW_WIDTH // 2, 350,
+                 text_color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("SPACE to go back to menu", WINDOW_WIDTH // 2, 420,
+                 text_color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
     
     glPopMatrix()
     glMatrixMode(GL_PROJECTION)
@@ -594,8 +576,6 @@ def keyboard(key, x, y):
             current_level = selected_level
             game_state = PLAYING
             paused = False
-    
-    glutPostRedisplay()
 
 
 def special(key, x, y):
@@ -607,13 +587,11 @@ def special(key, x, y):
             selected_level = max(0, selected_level - 1)
         elif key == GLUT_KEY_RIGHT:
             selected_level = min(4, selected_level + 1)
-        
-        glutPostRedisplay()
 
 
 def idle():
     """Idle callback for continuous rendering"""
-    glutPostRedisplay()
+    display()
 
 
 def reshape(width, height):
@@ -632,11 +610,11 @@ def main():
     glutCreateWindow(b"StratoQuest")
     
     glEnable(GL_DEPTH_TEST)
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
     
     glutDisplayFunc(display)
     glutKeyboardFunc(keyboard)
     glutSpecialFunc(special)
-    glutReshapeFunc(reshape)
     glutIdleFunc(idle)
     
     glutMainLoop()
