@@ -1,0 +1,32 @@
+GL/GLUT/GLU COMPLIANCE REPORT
+==============================
+
+VIOLATIONS FOUND: 3 function types not in specfile are being used
+
+1. glClearColor
+   - Used in: draw_level_1 (line 337), draw_level_2 (line 357), 
+     draw_level_3 (line 377), draw_level_4 (line 397), draw_level_5 (line 416)
+   - Status: NOT in specfile's allowed functions
+   - Purpose: Sets the clear color for the background
+
+2. glEnable / glDisable
+   - Used in: draw_level_select (line 483 glEnable, line 489 glDisable), 
+     draw_pause_menu (line 508 glDisable, line 516 glEnable)
+   - Status: NOT in specfile's allowed functions
+   - Purpose: Enables/disables GL_DEPTH_TEST for switching between 3D and 2D rendering
+
+3. glutSwapBuffers
+   - Used in: display function (line 609)
+   - Status: NOT in specfile's allowed functions
+   - Purpose: Swaps the front and back buffers for double-buffering display
+
+ALLOWED FUNCTIONS BEING USED (compliant):
+- GL: glColor3f, glMatrixMode, glPushMatrix, glPopMatrix, glLoadIdentity, glTranslatef, 
+  glBegin, glVertex3f, glEnd, glRasterPos2f, glClear, glViewport
+- GLUT: glutInit, glutInitDisplayMode, glutInitWindowSize, glutInitWindowPosition, 
+  glutCreateWindow, glutDisplayFunc, glutKeyboardFunc, glutSpecialFunc, glutReshapeFunc, 
+  glutIdleFunc, glutMainLoop, glutPostRedisplay, glutBitmapCharacter
+- GLU: gluPerspective, gluOrtho2D, gluNewQuadric, gluCylinder, gluSphere
+
+RECOMMENDATION:
+Either remove the three violating functions or add them to the specfile's allowed list.

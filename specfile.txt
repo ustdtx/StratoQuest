@@ -1,0 +1,241 @@
+Strato Quest – Final Specfile (LLM-Ready, Tutorial Style)
+1. Technical Constraints
+
+Allowed OpenGL / GL Functions
+GL_Depth()
+glColor3f
+
+glMatrixMode
+
+glPushMatrix / glPopMatrix
+
+glutSwapBuffers
+
+glLoadIdentity
+
+glTranslatef
+
+glRotatef
+
+glScalef
+
+glBegin / glEnd
+
+glVertex3f
+
+glRasterPos2f
+
+glPointSize
+
+glClear
+
+glViewport
+
+Allowed GLUT Functions
+
+glutInit, glutInitDisplayMode, glutInitWindowSize, glutInitWindowPosition
+
+glutCreateWindow, glutMainLoop
+
+Callbacks: glutDisplayFunc, glutKeyboardFunc, glutSpecialFunc, glutMouseFunc, glutIdleFunc
+
+Drawing: glutSolidCube, glutBitmapCharacter
+
+Allowed GLU Functions
+
+gluPerspective, gluLookAt, gluOrtho2D, gluNewQuadric, gluCylinder, gluSphere
+
+No other GL/GLUT/GLU functions are permitted.
+
+2. Game States
+
+MENU → Start Game
+
+LEVEL_SELECT → Choose Level (All levels unlocked)
+
+PLAYING → Gameplay
+
+GAME_OVER → Player HP = 0, shows Retry
+
+Implementation: single state variable with switch logic.
+
+3. Camera & Perspective
+
+Third-person, behind-the-jet view
+
+Jet moves in X/Y plane; Z fixed
+
+World moves toward player (-Z)
+
+Use gluLookAt to position camera behind jet
+
+4. Player
+
+Movement: WASD, bounded box
+Firing:
+
+Left click → Normal bullets
+
+Right click → Missile special (6 homing missiles)
+
+Implementation:
+
+Player stored as player_x, player_y, player_z
+
+Rendered using glPushMatrix → glTranslatef → draw_player_jet() → glPopMatrix
+
+5. Player Jet Model
+
+Built from primitives: cubes, triangles
+
+Hierarchical rendering using glPushMatrix / glPopMatrix
+
+6. Weapons
+
+Normal Gun:
+
+Bullet = quad
+
+Moves straight along -Z
+
+Collision with enemies reduces HP
+
+Missiles:
+
+Homing toward nearest enemies
+
+Track enemy position per frame
+
+Destroyed on impact
+
+Laser:
+
+Temporary (10s) replacement for normal gun
+
+Long quad along -Z
+
+7. UI Elements (3D / 2D)
+
+HP Bar: Top-left 2D bar via gluOrtho2D
+
+Shield Indicator: Transparent halo (sphere) around jet
+
+Missile Cooldown: 3D pie chart using gluDisk or segmented quads
+
+Crosshair: 3D "+" in front of jet
+
+8. Enemies
+
+Types:
+
+Standard: 3 HP, 10 dmg, forward + player tracking
+
+Fast: 1 HP, 5 dmg, zigzag + tracking
+
+Heavy: 7 HP, 30 dmg, slow, delayed attack
+
+Behavior:
+
+Track player via: dx = player_x - enemy.x, dy = player_y - enemy.y
+
+Update position each frame: enemy.x += dx*speed, enemy.y += dy*speed
+
+Rendering: Use glPushMatrix, glTranslatef, glRotatef, then draw primitive(s), glPopMatrix.
+
+9. Enemy Waves
+
+Semi-procedural: number/type of enemies fixed per level
+
+Random spawn positions within level bounds
+
+Wave duration ~2.5 mins; finish early if all enemies destroyed
+
+10. Collisions
+
+Player vs Enemy: enemy destroyed, player takes 5 dmg
+
+Bullet vs Enemy: apply damage, destroy enemy if HP ≤ 0
+
+Pickup/Ring: collectable objects, grant bonus points
+
+11. Pickups
+
+Health: +20 HP
+
+Shield: activates one-hit protection
+
+Laser: temporary weapon upgrade
+
+All enclosed in transparent spheres
+
+Rotating for visibility
+
+12. Rings
+
+Bonus points
+
+Torus-like primitive using gluCylinder segments or vertex rings
+
+Collision detection when player passes through
+
+13. Levels & Visual Identity
+
+Total 5 levels
+
+Each visually distinct: background colors + objects
+
+Level Themes:
+
+Blue sky + sun
+
+Sunset sky
+
+Blue sky + clouds
+
+Purple sunset + clouds
+
+Red sky (final level, boss)
+
+Objects: sun, clouds, rocks; rendered with gluSphere, gluCylinder, glutSolidCube
+
+14. Final Boss (Level 5)
+
+Amalgamation of all enemy types
+
+Multiple attack patterns, phases triggered by HP
+
+Fully scripted, no procedural logic
+
+15. Cheat Mode
+
+Enabled before starting level
+
+Player HP does not decrease
+
+Damage logic bypassed if active
+
+16. Game Over
+
+Triggered when HP ≤ 0
+
+Shows “Game Over”
+
+Retry button → return to Level Select
+
+17. Timing & Level Length
+
+Each level ~3 minutes
+
+Enemy waves ~2.5 minutes
+
+Level can end earlier if all enemies killed
+
+esc button will pause game there will be a quit to level select button pressing esc again will continue
+
+18. Rendering Guidelines
+
+All objects: glPushMatrix() → transforms → draw → glPopMatrix()
+
+Use only allowed GL/GLUT/GLU functions
+
+No shaders, textures, or lighting
