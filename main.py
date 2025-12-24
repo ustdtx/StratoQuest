@@ -29,6 +29,8 @@ WINDOW_HEIGHT = 720
 player_x = 0.0
 player_y = 0.0
 player_z = 0.0
+player_vx = 0.0
+player_vy = 0.0
 player_speed = 1.5
 player_hp = 100
 player_shield = False
@@ -46,16 +48,30 @@ bullets = []
 BULLET_SPEED = 5.0
 BULLET_MAX_DIST = -1000
 
+missiles = []
+MISSILE_SPEED = 4.0
+missile_cooldown_timer = 0.0
+MISSILE_COOLDOWN_MAX = 5.0
+
+# Pickups
+pickups = [] # {'x', 'y', 'z', 'type', 'rot'}
+PICKUP_SPEED = 2.0
+laser_active = False
+laser_timer = 0.0
+LASER_DURATION = 10.0
+
+# Scoring & Rings
+score = 0
+rings = [] # {'x', 'y', 'z', 'rot'}
+RING_SPEED = 2.0
+
+enemy_bullets = [] # {'x', 'y', 'z', 'dx', 'dy', 'dz'}
+
 enemies = [] # [{'x', 'y', 'z', 'type', 'hp'}]
 ENEMY_SPAWN_Z = -800
 
-# Movement state
-keys_pressed = {
-    'w': False,
-    'a': False,
-    's': False,
-    'd': False
-}
+boss = None # {'x', 'y', 'z', 'hp', 'max_hp', 'active', 'phase', 'angle'}
+cheat_mode = False
 
 # ============ UTILITY FUNCTIONS ============
 
@@ -279,6 +295,23 @@ def draw_player_jet():
     glPopMatrix()
     
     glPopMatrix()
+    
+    # Draw Shield
+    if player_shield:
+        glPushMatrix()
+        glTranslatef(player_x, player_y, player_z)
+        glColor3f(0.0, 0.5, 1.0)
+        # glutWireSphere not allowed. Use solid gluSphere.
+        # It might obscure the player, so we'll draw it small or rely on a different visual cue?
+        # Let's draw it as a small "energy core" above the jet or a large solid sphere
+        # If we draw a large solid sphere, we can't see the jet (no transparency).
+        # Solution: Draw 4 small spheres rotating around the jet?
+        # Or just one small sphere above it.
+        glPushMatrix()
+        glTranslatef(0, 5, 0)
+        draw_sphere(5)
+        glPopMatrix()
+        glPopMatrix()
 
 
 # ============ LEVEL RENDERING ============
@@ -486,6 +519,9 @@ def draw_pause_menu():
 
 def draw_hud():
     """Draw 2D HUD overlay"""
+    # Use glClear to clear depth buffer for HUD instead of glDisable
+    glClear(GL_DEPTH_BUFFER_BIT)
+    
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
@@ -494,17 +530,6 @@ def draw_hud():
     glPushMatrix()
     glLoadIdentity()
     
-    # 1. Crosshair
-    mid_x, mid_y = WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2
-    size = 15
-    glColor3f(0.0, 1.0, 0.0) # Green
-    glBegin(GL_LINES)
-    glVertex2f(mid_x - size, mid_y)
-    glVertex2f(mid_x + size, mid_y)
-    glVertex2f(mid_x, mid_y - size)
-    glVertex2f(mid_x, mid_y + size)
-    glEnd()
-    
     # 2. Health Bar
     bar_x, bar_y = 50, 50
     bar_width, bar_height = 200, 20
@@ -512,42 +537,159 @@ def draw_hud():
     # Background (Red/Empty)
     glColor3f(0.5, 0.0, 0.0)
     glBegin(GL_QUADS)
-    glVertex2f(bar_x, bar_y)
-    glVertex2f(bar_x + bar_width, bar_y)
-    glVertex2f(bar_x + bar_width, bar_y + bar_height)
-    glVertex2f(bar_x, bar_y + bar_height)
+    glVertex3f(bar_x, bar_y, 0)
+    glVertex3f(bar_x + bar_width, bar_y, 0)
+    glVertex3f(bar_x + bar_width, bar_y + bar_height, 0)
+    glVertex3f(bar_x, bar_y + bar_height, 0)
     glEnd()
     
     # Foreground (Green/HP)
     hp_pct = max(0, player_hp / 100.0)
     glColor3f(0.0, 1.0, 0.0)
     glBegin(GL_QUADS)
-    glVertex2f(bar_x, bar_y)
-    glVertex2f(bar_x + bar_width * hp_pct, bar_y)
-    glVertex2f(bar_x + bar_width * hp_pct, bar_y + bar_height)
-    glVertex2f(bar_x, bar_y + bar_height)
+    glVertex3f(bar_x, bar_y, 0)
+    glVertex3f(bar_x + bar_width * hp_pct, bar_y, 0)
+    glVertex3f(bar_x + bar_width * hp_pct, bar_y + bar_height, 0)
+    glVertex3f(bar_x, bar_y + bar_height, 0)
     glEnd()
     
     # Border
     glColor3f(1.0, 1.0, 1.0)
-    glLineWidth(2)
+    # glLineWidth removed
     glBegin(GL_LINE_LOOP)
-    glVertex2f(bar_x, bar_y)
-    glVertex2f(bar_x + bar_width, bar_y)
-    glVertex2f(bar_x + bar_width, bar_y + bar_height)
-    glVertex2f(bar_x, bar_y + bar_height)
+    glVertex3f(bar_x, bar_y, 0)
+    glVertex3f(bar_x + bar_width, bar_y, 0)
+    glVertex3f(bar_x + bar_width, bar_y + bar_height, 0)
+    glVertex3f(bar_x, bar_y + bar_height, 0)
     glEnd()
-    glLineWidth(1)
     
     draw_text_2d(f"HP: {int(player_hp)}", bar_x, bar_y - 10)
     
-    # 3. Level Info
+    # 3. Level Info & Score
     draw_text_2d(f"LEVEL {current_level + 1}", WINDOW_WIDTH - 150, 50)
+    draw_text_2d(f"SCORE: {score}", WINDOW_WIDTH - 150, 80)
+
+    # 4. Missile Cooldown (Pie Chart)
+    ui_x = WINDOW_WIDTH - 60
+    ui_y = WINDOW_HEIGHT - 60
+    radius = 40
+    
+    glPushMatrix()
+    glTranslatef(ui_x, ui_y, 0)
+    
+    # Background (Gray)
+    glColor3f(0.2, 0.2, 0.2)
+    draw_circle_fan(radius, 360)
+    
+    # Foreground (Orange/Yellow)
+    if missile_cooldown_timer > 0:
+        # Recharging
+        ratio = 1.0 - (missile_cooldown_timer / MISSILE_COOLDOWN_MAX)
+        if ratio > 0:
+            angle = 360 * ratio
+            glColor3f(1.0, 0.5, 0.0)
+            draw_circle_fan(radius, angle)
+    else:
+        # Ready!
+        glColor3f(1.0, 1.0, 0.0)
+        draw_circle_fan(radius, 360)
+        
+    draw_text_2d("MSL", -15, 5, (0,0,0) if missile_cooldown_timer <= 0 else (1,1,1))
+    
+    glPopMatrix()
+    
+    # 5. Boss HP
+    if current_level == 4 and boss and boss['active']:
+        boss_pct = max(0, boss['hp'] / boss['max_hp'])
+        bx, by = WINDOW_WIDTH // 2 - 200, 50
+        bw, bh = 400, 20
+        
+        glColor3f(0.5, 0.0, 0.0)
+        glBegin(GL_QUADS)
+        glVertex3f(bx, by, 0); glVertex3f(bx+bw, by, 0)
+        glVertex3f(bx+bw, by+bh, 0); glVertex3f(bx, by+bh, 0)
+        glEnd()
+        
+        glColor3f(1.0, 0.0, 0.0)
+        glBegin(GL_QUADS)
+        glVertex3f(bx, by, 0); glVertex3f(bx+bw*boss_pct, by, 0)
+        glVertex3f(bx+bw*boss_pct, by+bh, 0); glVertex3f(bx, by+bh, 0)
+        glEnd()
+        
+        draw_text_with_border("FINAL BOSS", WINDOW_WIDTH // 2, 30, (1,0,0), centered=True)
+        
+    # 6. Cheat Indicator
+    if cheat_mode:
+        draw_text_with_border("CHEAT MODE", 100, WINDOW_HEIGHT - 30, (1,1,0), centered=True)
     
     glPopMatrix()
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
+
+def draw_circle_fan(radius, angle_deg):
+    """Draw a filled circle sector using allowed primitives"""
+    glBegin(GL_TRIANGLE_FAN)
+    glVertex3f(0, 0, 0) # Center
+    
+    # Segments
+    segments = int(angle_deg / 10) + 1
+    for i in range(segments + 1):
+        theta = math.radians(min(angle_deg, i * 10))
+        # Note: In HUD (Ortho2D), Y is down. Cos/Sin calculation:
+        # 0 deg = Right (X+). 90 deg = Down (Y+).
+        x = radius * math.cos(theta)
+        y = radius * math.sin(theta)
+        glVertex3f(x, y, 0)
+        
+    glEnd()
+
+
+def reset_game():
+    """Reset all game variables for a new run"""
+    global player_hp, player_x, player_y, player_vx, player_vy, bullets, enemy_bullets, enemies, obstacles, score, rings, pickups, boss
+    player_hp = 100
+    player_x = 0
+    player_y = 0
+    player_vx = 0
+    player_vy = 0
+    score = 0
+    bullets = []
+    enemy_bullets = []
+    enemies = []
+    obstacles = []
+    rings = []
+    pickups = []
+    boss = None
+
+def draw_game_over():
+    """Draw Game Over screen"""
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glLoadIdentity()
+    
+    # Red overlay
+    glBegin(GL_QUADS)
+    glColor3f(1, 1, 1)
+    glVertex3f(-1000, -1000, -100)
+    glVertex3f(1000, -1000, -100)
+    glVertex3f(1000, 1000, -100)
+    glVertex3f(-1000, 1000, -100)
+    glEnd()
+    
+    msg = "GAME OVER"
+    color = (1.0, 0.0, 0.0)
+    if current_level == 4 and boss and not boss['active']:
+        msg = "VICTORY!"
+        color = (0.0, 1.0, 0.0)
+    
+    draw_text_with_border(msg, WINDOW_WIDTH // 2, 250,
+                 text_color=color, font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border(f"Final Score: {score}", WINDOW_WIDTH // 2, 300,
+                 text_color=(1,1,1), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("Press SPACE to Retry", WINDOW_WIDTH // 2, 350,
+                 text_color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
+    draw_text_with_border("ESC to Menu", WINDOW_WIDTH // 2, 420,
+                 text_color=(1.0, 1.0, 1.0), font=GLUT_BITMAP_TIMES_ROMAN_24, centered=True)
 
 
 # ============ DISPLAY & CALLBACKS ============
@@ -585,13 +727,18 @@ def display():
         draw_current_level()
         draw_player_jet()
         draw_enemies()
+        if current_level == 4:
+            draw_boss()
+        draw_pickups()
+        draw_rings()
         draw_bullets()
+        draw_missiles()
         draw_hud()
         
         if paused:
             draw_pause_menu()
     elif game_state == GAME_OVER:
-        draw_menu()
+        draw_game_over()
     
     glutSwapBuffers()
 
@@ -602,16 +749,20 @@ def mouse(button, state, x, y):
     
     if game_state == PLAYING and not paused:
         if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
-            # Spawn bullet at player position
+            # Spawn bullet or laser
+            b_type = 'laser' if laser_active else 'normal'
             bullets.append({
                 'x': player_x,
                 'y': player_y,
-                'z': player_z - 5 # Start slightly ahead
+                'z': player_z, # Start exactly at player
+                'type': b_type
             })
+        elif button == GLUT_RIGHT_BUTTON and state == GLUT_DOWN:
+            spawn_missiles()
 
 def keyboard(key, x, y):
     """Keyboard callback"""
-    global game_state, selected_level, current_level, paused, keys_pressed
+    global game_state, selected_level, current_level, paused, player_x, player_y, player_vx, player_vy
     
     key = key.lower()
     
@@ -625,6 +776,8 @@ def keyboard(key, x, y):
             game_state = MENU
         elif game_state == MENU:
             sys.exit()
+        elif game_state == GAME_OVER:
+            game_state = MENU
     
     elif key == b' ':  # SPACE
         if game_state == MENU:
@@ -633,28 +786,34 @@ def keyboard(key, x, y):
         elif game_state == PLAYING and paused:
             game_state = LEVEL_SELECT
             paused = False
+        elif game_state == GAME_OVER:
+            reset_game()
+            game_state = PLAYING
     
     elif key == b'\r':  # ENTER
         if game_state == LEVEL_SELECT:
             current_level = selected_level
+            reset_game()
             game_state = PLAYING
             paused = False
+    
+    elif key == b'c': # Cheat Toggle
+        global cheat_mode
+        cheat_mode = not cheat_mode
+        print(f"Cheat Mode: {cheat_mode}")
             
-    # Track WASD for movement
-    if key == b'w': keys_pressed['w'] = True
-    if key == b'a': keys_pressed['a'] = True
-    if key == b's': keys_pressed['s'] = True
-    if key == b'd': keys_pressed['d'] = True
-
-
-def keyboard_up(key, x, y):
-    """Keyboard release callback"""
-    global keys_pressed
-    key = key.lower()
-    if key == b'w': keys_pressed['w'] = False
-    if key == b'a': keys_pressed['a'] = False
-    if key == b's': keys_pressed['s'] = False
-    if key == b'd': keys_pressed['d'] = False
+    # Apply acceleration (Inertia movement)
+    accel = 3.0 
+    if game_state == PLAYING and not paused:
+        if key == b'w': player_vy += accel
+        if key == b'a': player_vx -= accel
+        if key == b's': player_vy -= accel
+        if key == b'd': player_vx += accel
+        
+        # Velocity clamping
+        max_v = 4.0
+        player_vx = max(-max_v, min(max_v, player_vx))
+        player_vy = max(-max_v, min(max_v, player_vy))
 
 
 def special(key, x, y):
@@ -666,6 +825,175 @@ def special(key, x, y):
             selected_level = max(0, selected_level - 1)
         elif key == GLUT_KEY_RIGHT:
             selected_level = min(4, selected_level + 1)
+
+
+def spawn_pickup():
+    """Randomly spawn power-ups"""
+    if random.random() < 0.02: # Frequent (was 0.005)
+        p_type = random.choice(['health', 'shield', 'laser'])
+        
+        pickups.append({
+            'x': random.uniform(-60, 60),
+            'y': random.uniform(-30, 30),
+            'z': -800,
+            'type': p_type,
+            'rot': 0,
+            'active': True
+        })
+
+def update_pickups():
+    """Move pickups and check collisions"""
+    global player_hp, player_shield, laser_active, laser_timer
+    
+    # Update Laser Timer
+    if laser_active:
+        laser_timer -= 0.016
+        if laser_timer <= 0:
+            laser_active = False
+    
+    for p in pickups:
+        if not p['active']: continue
+        
+        p['z'] += PICKUP_SPEED
+        p['rot'] = (p['rot'] + 2) % 360
+        
+        # Collision with Player
+        dx = player_x - p['x']
+        dy = player_y - p['y']
+        dz = player_z - p['z']
+        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        if dist < 12: # Pickup radius + player radius
+            p['active'] = False
+            
+            # Apply Effect
+            if p['type'] == 'health':
+                player_hp = min(100, player_hp + 20)
+                print("Picked up Health!")
+            elif p['type'] == 'shield':
+                player_shield = True
+                print("Shield Activated!")
+            elif p['type'] == 'laser':
+                laser_active = True
+                laser_timer = LASER_DURATION
+                print("Laser Weapon Active!")
+    
+    # Cleanup
+    pickups[:] = [p for p in pickups if p['active'] and p['z'] < 50]
+
+def spawn_ring():
+    """Spawn bonus rings"""
+    if random.random() < 0.005: # Rare (Too many before)
+        rings.append({
+            'x': random.uniform(-60, 60),
+            'y': random.uniform(-30, 30),
+            'z': -800,
+            'rot': 0,
+            'active': True
+        })
+
+def update_rings():
+    """Move rings and check collision"""
+    global score
+    
+    for r in rings:
+        if not r['active']: continue
+        
+        r['z'] += RING_SPEED
+        r['rot'] = (r['rot'] + 1) % 360
+        
+        # Collision (Fly through)
+        dx = player_x - r['x']
+        dy = player_y - r['y']
+        dz = player_z - r['z']
+        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        if dist < 15: # Ring radius approx
+            r['active'] = False
+            score += 100
+            print("Ring Collected! +100")
+            
+    rings[:] = [r for r in rings if r['active'] and r['z'] < 50]
+
+def draw_rings():
+    """Draw rings using cylinder segments (Torus-like)"""
+    for r in rings:
+        glPushMatrix()
+        glTranslatef(r['x'], r['y'], r['z'])
+        glRotatef(r['rot'], 0, 0, 1) # Spin animation
+        
+        glColor3f(1.0, 0.8, 0.0)
+        
+        # Approximate torus geometry using segments
+        radius = 5 
+        tube_radius = 0.8
+        segments = 8
+        angle_step = 360 / segments
+        
+        for i in range(segments):
+            glPushMatrix()
+            angle = i * angle_step
+            # Calculate vertex position on circle
+            rad = math.radians(angle)
+            x = math.cos(rad) * radius
+            y = math.sin(rad) * radius
+            
+            glTranslatef(x, y, 0)
+            
+            # Rotate segment to be tangent to the circle
+            glRotatef(angle + 90, 0, 0, 1) 
+            
+            # Calculate chord length to close the gap between segments
+            length = 2 * radius * math.sin(math.radians(angle_step/2)) * 1.05
+            
+            # Center and align cylinder
+            glTranslatef(0, -length/2, 0)
+            glRotatef(90, 1, 0, 0) 
+            
+            draw_cylinder(tube_radius, length, 8, 1)
+            glPopMatrix()
+            
+        glPopMatrix()
+
+def draw_pickups():
+    """Render rotating pickups"""
+    for p in pickups:
+        glPushMatrix()
+        glTranslatef(p['x'], p['y'], p['z'])
+        glRotatef(p['rot'], 0, 1, 0)
+        
+        # Outer Shell (Solid sphere instead of wireframe)
+        glColor3f(1.0, 1.0, 1.0)
+        # We can't use glBlendFunc for transparency, so we make it small or just rely on color
+        # Spec only allows gluSphere
+        # We'll just draw the icon larger and skip the shell or make shell small?
+        # Let's draw the shell as a small "core" or skip it to avoid obscuring the icon.
+        # Or just draw the icon.
+        
+        # Icon inside
+        if p['type'] == 'health':
+            glColor3f(0.0, 1.0, 0.0) # Green Cross
+            glPushMatrix()
+            glScalef(2.0, 0.5, 0.5)
+            draw_cube(1.5)
+            glPopMatrix()
+            glPushMatrix()
+            glScalef(0.5, 2.0, 0.5)
+            draw_cube(1.5)
+            glPopMatrix()
+            
+        elif p['type'] == 'shield':
+            glColor3f(0.0, 0.5, 1.0) # Blue Sphere
+            draw_sphere(2.5)
+            
+        elif p['type'] == 'laser':
+            glColor3f(1.0, 0.0, 0.0) # Red Beam/Bar
+            glPushMatrix()
+            glScalef(0.5, 0.5, 4.0)
+            draw_cube(1.5)
+            glPopMatrix()
+            
+        glPopMatrix()
 
 
 import random
@@ -710,46 +1038,32 @@ def spawn_obstacle():
 
 def update_obstacles():
     """Move obstacles and check collisions"""
-    global player_hp, elapsed_time, last_time
+    global player_hp, elapsed_time, last_time, player_shield, cheat_mode
     
-    # We need delta_time for consistent movement
-    # But update_game_logic is called from idle(), which doesn't pass delta.
-    # We'll trust the global frame timing or just use a fixed per-frame move for now
-    # to match the visual ground scroll which is time-based.
-    
-    # Ideally: move_amount = GAME_SPEED * 20 * delta_time
-    # But currently ground moves by (elapsed_time * GAME_SPEED * 20)
-    # So obstacles must move at that same rate.
-    
-    # Let's standardise: 
-    # Movement per frame = (Change in elapsed_time) * Speed_Factor
-    # We can't easily get 'Change in elapsed_time' inside this function without passing it.
-    
-    # FIX: We will just move them by a fixed amount that 'looks' right for now,
-    # OR better, update obstacle Z based on creation time? No, that's complex for collisions.
-    
-    # Let's use a small fixed value that approximates the visual speed.
-    move_speed = 3.0 # Experimentally adjusted
+    # Obstacle movement speed
+    move_speed = 3.0 
     
     for obs in obstacles:
         if obs['active']:
             obs['z'] += move_speed 
             
-            # Collision Detection
+            # Distance calculation for collision
             dx = player_x - obs['x']
             dy = player_y - obs['y']
             dz = player_z - obs['z']
-            distance = math.sqrt(dx*dx + dy*dy + dz*dz) # 3D distance
+            distance = math.sqrt(dx*dx + dy*dy + dz*dz)
             
-            # For "Ground" objects, we mostly care about X/Z distance if Y is close enough
-            # But full 3D check is fine if player can fly over them.
-            
+            # Check collision against radius
             if distance < (obs['radius'] + 5):
                 obs['active'] = False
-                player_hp -= 10
-                print(f"Collision! HP: {player_hp}")
+                if player_shield:
+                    player_shield = False
+                    print("Shield Absorbed Obstacle!")
+                elif not cheat_mode:
+                    player_hp -= 10
+                    print(f"Collision! HP: {player_hp}")
             
-            # Despawn
+            # Remove if behind camera
             if obs['z'] > OBSTACLE_DESPAWN_Z:
                 obs['active'] = False
     
@@ -838,16 +1152,17 @@ def draw_obstacles():
 
 def spawn_enemy():
     """Spawn enemies based on level difficulty"""
-    if random.random() < 0.02: # 2% chance per frame
+    if random.random() < 0.008: # Reduced spawn rate
         # Types: 'standard', 'fast', 'heavy'
         e_type = random.choice(['standard', 'fast', 'heavy'])
         
-        x_pos = random.uniform(-60, 60)
-        y_pos = random.uniform(-40, 40) # Enemies fly in the air
+        x_pos = random.uniform(-50, 50)
+        y_pos = random.uniform(-20, 40)
         
-        hp = 3
-        if e_type == 'fast': hp = 1
-        elif e_type == 'heavy': hp = 7
+        # Lowered HP to make them easier to kill
+        hp = 2 # Was 3
+        if e_type == 'fast': hp = 1 # Was 2
+        elif e_type == 'heavy': hp = 5 # Was 10
         
         enemies.append({
             'x': x_pos,
@@ -856,29 +1171,74 @@ def spawn_enemy():
             'type': e_type,
             'hp': hp,
             'active': True,
-            'radius': 6
+            'radius': 8,
+            'last_shot': 0
         })
 
+def update_enemy_bullets():
+    """Update enemy projectiles"""
+    global player_hp, player_shield, cheat_mode
+    
+    speed = 3.0
+    for b in enemy_bullets:
+        b['x'] += b['dx'] * speed
+        b['y'] += b['dy'] * speed
+        b['z'] += b['dz'] * speed
+        
+        # Check collision with player
+        dx = player_x - b['x']
+        dy = player_y - b['y']
+        dz = player_z - b['z']
+        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        if dist < 8: # Player hit radius
+            b['z'] = 100 # Remove
+            if player_shield:
+                player_shield = False
+                print("Shield Absorbed Shot!")
+            elif not cheat_mode:
+                player_hp -= 5
+                print(f"Hit by enemy! HP: {player_hp}")
+            
+    # Cleanup
+    enemy_bullets[:] = [b for b in enemy_bullets if b['z'] < 50 and b['z'] > -1200]
+
 def update_enemies():
-    """Move enemies and check bullet collisions"""
-    global player_hp
+    """Move enemies, handle shooting, and check collisions"""
+    global player_hp, elapsed_time, player_shield, score, cheat_mode
     
     for e in enemies:
         if not e['active']: continue
         
         # Movement
-        speed = 2.0
-        if e['type'] == 'fast': speed = 3.5
-        elif e['type'] == 'heavy': speed = 1.0
+        speed = 1.2 # Slower enemies
+        if e['type'] == 'fast': speed = 2.0
+        elif e['type'] == 'heavy': speed = 0.8
         
-        e['z'] += speed # Move towards player
+        e['z'] += speed 
         
-        # Basic tracking (move x/y towards player)
-        if e['type'] != 'heavy': # Heavy just moves straight
+        # Tracking
+        if e['type'] != 'heavy':
             dx = player_x - e['x']
             dy = player_y - e['y']
-            e['x'] += dx * 0.01
-            e['y'] += dy * 0.01
+            e['x'] += dx * 0.005
+            e['y'] += dy * 0.005
+            
+        # Shooting Logic
+        if random.random() < 0.015 and e['z'] > -700:
+            dx = player_x - e['x']
+            dy = player_y - e['y']
+            dz = player_z - e['z']
+            mag = math.sqrt(dx*dx + dy*dy + dz*dz)
+            
+            enemy_bullets.append({
+                'x': e['x'],
+                'y': e['y'],
+                'z': e['z'],
+                'dx': dx / mag,
+                'dy': dy / mag,
+                'dz': dz / mag
+            })
             
         # Collision with Player
         dx = player_x - e['x']
@@ -888,44 +1248,353 @@ def update_enemies():
         
         if dist < (e['radius'] + 5):
             e['active'] = False
-            player_hp -= 10
-            print("Crashed into enemy!")
+            if player_shield:
+                player_shield = False
+                print("Shield Absorbed Collision!")
+            elif not cheat_mode:
+                player_hp -= 10
+                print("Crashed into enemy!")
+            else:
+                print("Cheat: Collision Ignored")
             
         # Collision with Bullets
         for b in bullets:
+            # Check lateral distance (X/Y)
             bdx = b['x'] - e['x']
             bdy = b['y'] - e['y']
-            bdz = b['z'] - e['z']
-            b_dist = math.sqrt(bdx*bdx + bdy*bdy + bdz*bdz)
+            lateral_dist = math.sqrt(bdx*bdx + bdy*bdy)
             
-            if b_dist < e['radius'] + 2:
-                e['hp'] -= 1
-                b['z'] = BULLET_MAX_DIST - 100 # Remove bullet effectively
-                if e['hp'] <= 0:
-                    e['active'] = False
-                    print("Enemy Destroyed!")
+            # Hit radius for lateral check
+            hit_radius = e['radius'] + 5 
+
+            if lateral_dist < hit_radius:
+                # Check Z depth (Swept collision)
+                bullet_step = BULLET_SPEED * 20
+                if b.get('type') == 'laser': bullet_step = BULLET_SPEED * 40 # Lasers appear longer
+                
+                z_start = b['z'] + e['radius']
+                z_end = b['z'] - bullet_step - e['radius']
+                
+                if e['z'] <= z_start and e['z'] >= z_end:
+                    # HIT!
+                    if b.get('type') == 'laser':
+                        e['hp'] -= 5 # High damage per frame
+                        # Laser does NOT despawn (Piercing)
+                    else:
+                        e['hp'] -= 1
+                        b['z'] = BULLET_MAX_DIST - 100 # Despawn bullet
+                        
+                    if e['hp'] <= 0:
+                        e['active'] = False
+                        pts = 50
+                        if e['type'] == 'fast': pts = 100
+                        elif e['type'] == 'heavy': pts = 300
+                        score += pts
+                        print(f"Enemy Destroyed! +{pts}")
+                    
+                    if b.get('type') != 'laser':
+                        break # Bullet consumed (normal only)
 
     # Cleanup
     enemies[:] = [e for e in enemies if e['active'] and e['z'] < 50]
 
 
 def draw_enemies():
-    """Render enemies"""
+    """Render enemies with better models"""
     for e in enemies:
         glPushMatrix()
         glTranslatef(e['x'], e['y'], e['z'])
+        glRotatef(180, 0, 1, 0)
         
         if e['type'] == 'standard':
-            glColor3f(1.0, 0.0, 0.0) # Red Cube
-            draw_cube(8)
+            glColor3f(0.8, 0.2, 0.2) # Redish Saucer
+            glPushMatrix()
+            glScalef(1.0, 0.3, 1.0)
+            draw_sphere(8)
+            glPopMatrix()
+            glColor3f(0.4, 0.8, 1.0) # Cockpit
+            glPushMatrix()
+            glTranslatef(0, 2, 0)
+            draw_sphere(4)
+            glPopMatrix()
+            
         elif e['type'] == 'fast':
-            glColor3f(1.0, 1.0, 0.0) # Yellow Triangle/Cone
-            glutSolidCone(5, 10, 10, 10)
+            glColor3f(1.0, 0.8, 0.0) # Yellow Dart
+            glPushMatrix()
+            glScalef(0.5, 0.5, 2.0)
+            draw_sphere(6)
+            glPopMatrix()
+            glColor3f(0.8, 0.6, 0.0) # Wings
+            glPushMatrix()
+            glScalef(2.0, 0.1, 0.5)
+            draw_cube(8)
+            glPopMatrix()
+            
         elif e['type'] == 'heavy':
-            glColor3f(0.5, 0.0, 0.5) # Purple Large Cube
+            glColor3f(0.5, 0.0, 0.8) # Purple Mothership
             draw_cube(12)
+            glColor3f(0.8, 0.2, 0.8)
+            glPushMatrix()
+            glTranslatef(4, 4, 4)
+            draw_sphere(4)
+            glPopMatrix()
             
         glPopMatrix()
+
+
+def spawn_missiles():
+    """Fire a barrage of homing missiles"""
+    global missile_cooldown_timer
+    
+    if missile_cooldown_timer <= 0:
+        missile_cooldown_timer = MISSILE_COOLDOWN_MAX
+        
+        # Spawn 6 missiles in an arc
+        for i in range(6):
+            # Spread them out slightly
+            offset_x = (i - 2.5) * 5
+            missiles.append({
+                'x': player_x + offset_x,
+                'y': player_y,
+                'z': player_z,
+                'dx': 0, # Initial velocity (will be guided)
+                'dy': 0, 
+                'dz': -1,
+                'target_id': None, # Will find target
+                'life': 100 # Frames to live
+            })
+
+def update_missiles():
+    """Update missile homing logic and collisions"""
+    global missile_cooldown_timer, score
+    
+    # Cooldown tick
+    if missile_cooldown_timer > 0:
+        missile_cooldown_timer -= 0.016 # Approx 60 FPS
+    
+    for m in missiles:
+        m['life'] -= 1
+        m['z'] -= MISSILE_SPEED # Base forward movement
+        
+        # 1. Find Target if none or dead
+        target = None
+        best_dist = 9999
+        
+        # Check if current target is still valid
+        valid_target = False
+        if m['target_id'] is not None:
+            for e in enemies:
+                if id(e) == m['target_id'] and e['active']:
+                    target = e
+                    valid_target = True
+                    break
+        
+        # Find new target if needed
+        if not valid_target:
+            m['target_id'] = None
+            for e in enemies:
+                if not e['active']: continue
+                dx = e['x'] - m['x']
+                dy = e['y'] - m['y']
+                dz = e['z'] - m['z']
+                dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                
+                # Prefer enemies in front
+                if dz < 0 and dist < best_dist:
+                    best_dist = dist
+                    target = e
+            
+            if target:
+                m['target_id'] = id(target)
+        
+        # 2. Homing Physics
+        if target:
+            # Vector to target
+            tx, ty, tz = target['x'], target['y'], target['z']
+            dx = tx - m['x']
+            dy = ty - m['y']
+            dz = tz - m['z']
+            
+            # Normalize
+            mag = math.sqrt(dx*dx + dy*dy + dz*dz)
+            if mag > 0:
+                dx /= mag
+                dy /= mag
+                dz /= mag
+                
+                # Steer missile (interpolate velocity)
+                steer_strength = 0.2
+                m['dx'] = m['dx'] * (1 - steer_strength) + dx * steer_strength
+                m['dy'] = m['dy'] * (1 - steer_strength) + dy * steer_strength
+                m['dz'] = m['dz'] * (1 - steer_strength) + dz * steer_strength
+        
+        # Apply steering to position
+        m['x'] += m['dx'] * MISSILE_SPEED
+        m['y'] += m['dy'] * MISSILE_SPEED
+        m['z'] += m['dz'] * MISSILE_SPEED # Extra Z push
+        
+        # 3. Collision with Enemies
+        hit = False
+        for e in enemies:
+            if not e['active']: continue
+            
+            dx = m['x'] - e['x']
+            dy = m['y'] - e['y']
+            dz = m['z'] - e['z']
+            dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+            
+            if dist < e['radius'] + 5:
+                e['hp'] -= 5 # High damage
+                hit = True
+                if e['hp'] <= 0:
+                    e['active'] = False
+                    pts = 50
+                    if e['type'] == 'fast': pts = 100
+                    elif e['type'] == 'heavy': pts = 300
+                    score += pts
+                break
+        
+        if hit:
+            m['life'] = 0 # Destroy missile
+
+    # Cleanup
+    missiles[:] = [m for m in missiles if m['life'] > 0 and m['z'] > BULLET_MAX_DIST]
+
+def draw_missiles():
+    """Render missiles"""
+    for m in missiles:
+        glPushMatrix()
+        glTranslatef(m['x'], m['y'], m['z'])
+        
+        # Rotate to face direction of travel? 
+        # For simplicity, just draw a cool shape
+        
+        glColor3f(1.0, 0.5, 0.0) # Orange
+        draw_sphere(2)
+        
+        # Trail
+        glColor3f(1.0, 1.0, 0.0)
+        glBegin(GL_LINES)
+        glVertex3f(0, 0, 0)
+        glVertex3f(0, 0, 10) # Trail behind
+        glEnd()
+        
+        glPopMatrix()
+
+
+def spawn_boss():
+    """Spawn the final level boss"""
+    global boss
+    boss = {
+        'x': 0,
+        'y': 20,
+        'z': -200, # Stay in distance
+        'hp': 500,
+        'max_hp': 500,
+        'active': True,
+        'angle': 0,
+        'timer': 0
+    }
+
+def update_boss():
+    """Update boss behavior"""
+    global boss, player_hp, score, game_state, player_shield
+    
+    if not boss or not boss['active']: return
+    
+    # Movement: Figure 8 or Sine
+    boss['angle'] += 0.02
+    boss['x'] = math.sin(boss['angle']) * 80
+    boss['y'] = math.cos(boss['angle'] * 2) * 30 + 10
+    
+    # Shooting
+    boss['timer'] += 1
+    if boss['timer'] > 60:
+        boss['timer'] = 0
+        # Fire spread
+        for i in range(-1, 2):
+            dx = (player_x - boss['x']) + i * 40
+            dy = (player_y - boss['y'])
+            dz = (player_z - boss['z'])
+            mag = math.sqrt(dx*dx + dy*dy + dz*dz)
+            
+            enemy_bullets.append({
+                'x': boss['x'],
+                'y': boss['y'],
+                'z': boss['z'],
+                'dx': dx / mag,
+                'dy': dy / mag,
+                'dz': dz / mag
+            })
+            
+    # Collision with Player Bullets
+    for b in bullets:
+        dx = b['x'] - boss['x']
+        dy = b['y'] - boss['y']
+        dz = b['z'] - boss['z']
+        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        # Boss Hitbox is large
+        if dist < 25:
+            if b.get('type') == 'laser':
+                boss['hp'] -= 2 # Laser tick
+            else:
+                boss['hp'] -= 5
+                b['z'] = 100 # Despawn
+            
+            if boss['hp'] <= 0:
+                boss['active'] = False
+                score += 5000
+                print("BOSS DEFEATED!")
+                # Trigger Win
+                # We'll handle win state in logic
+                
+            if b.get('type') != 'laser':
+                break
+
+    # Collision with Missiles
+    for m in missiles:
+        dx = m['x'] - boss['x']
+        dy = m['y'] - boss['y']
+        dz = m['z'] - boss['z']
+        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        if dist < 25:
+            boss['hp'] -= 15
+            m['life'] = 0
+            if boss['hp'] <= 0:
+                boss['active'] = False
+                score += 5000
+
+def draw_boss():
+    """Render the Boss"""
+    if not boss or not boss['active']: return
+    
+    glPushMatrix()
+    glTranslatef(boss['x'], boss['y'], boss['z'])
+    
+    # Main Body
+    glColor3f(0.8, 0.0, 0.0) # Red
+    draw_sphere(15)
+    
+    # Spikes / Details
+    glColor3f(0.2, 0.0, 0.0)
+    for i in range(8):
+        glPushMatrix()
+        glRotatef(i * 45 + boss['timer'], 0, 0, 1)
+        glTranslatef(15, 0, 0)
+        glRotatef(90, 0, 1, 0)
+        draw_cylinder(2, 10)
+        glPopMatrix()
+        
+    # Core
+    glColor3f(1.0, 0.5, 0.0)
+    glPushMatrix()
+    glScalef(1.2 + math.sin(boss['timer']*0.1)*0.2, 1.2, 1.2) # Pulsing effect
+    draw_sphere(8)
+    glPopMatrix()
+    
+    glPopMatrix()
 
 
 def update_bullets():
@@ -937,37 +1606,130 @@ def update_bullets():
     bullets[:] = [b for b in bullets if b['z'] > BULLET_MAX_DIST]
 
 def draw_bullets():
-    """Render bullets"""
-    glColor3f(1.0, 1.0, 0.0) # Yellow tracers
-    glBegin(GL_LINES)
+    """Render bullets and 3D crosshair"""
+    # Bullets & Lasers
     for b in bullets:
-        glVertex3f(b['x'], b['y'], b['z'])
-        glVertex3f(b['x'], b['y'], b['z'] + 10) # Trail
+        glPushMatrix()
+        glTranslatef(b['x'], b['y'], b['z'])
+        
+        if b.get('type') == 'laser':
+            # Laser: Long Red Beam
+            glColor3f(1.0, 0.0, 0.2)
+            glScalef(1.5, 0.5, 40.0) # Very long
+            draw_cube(2)
+        else:
+            # Normal: Yellow
+            glColor3f(1.0, 1.0, 0.0)
+            glScalef(2.0, 2.0, 8.0)
+            draw_sphere(2)
+            
+        glPopMatrix()
+        
+    # Enemy Bullets
+    glColor3f(1.0, 0.0, 0.0) # Red
+    for b in enemy_bullets:
+        glPushMatrix()
+        glTranslatef(b['x'], b['y'], b['z'])
+        draw_sphere(1.5) # Smaller and less distracting
+        glPopMatrix()
+        
+    # 3D Crosshair (Projected at target distance)
+    # This helps aim
+    glPushMatrix()
+    glTranslatef(player_x, player_y, player_z - 600) # Slightly closer than max range for visibility
+    glColor3f(0.0, 1.0, 0.0)
+    # glLineWidth removed
+    glBegin(GL_LINES)
+    # Plus sign
+    glVertex3f(-20, 0, 0); glVertex3f(20, 0, 0)
+    glVertex3f(0, -20, 0); glVertex3f(0, 20, 0)
     glEnd()
+    # glLineWidth(1) removed
+    
+    # Add a circle around it for better visibility
+    glBegin(GL_LINE_LOOP)
+    for i in range(20):
+        angle = 2 * 3.14159 * i / 20
+        glVertex3f(math.cos(angle)*15, math.sin(angle)*15, 0)
+    glEnd()
+    
+    glPopMatrix()
 
 def update_game_logic():
     """Update movement and game state logic"""
-    global player_x, player_y, player_z
+    global player_x, player_y, player_z, player_vx, player_vy, game_state, current_level, score, boss
     
     if game_state == PLAYING and not paused:
-        # Move player
-        if keys_pressed['w']: player_y += player_speed
-        if keys_pressed['s']: player_y -= player_speed
-        if keys_pressed['a']: player_x -= player_speed
-        if keys_pressed['d']: player_x += player_speed
+        # Check Game Over
+        if player_hp <= 0:
+            game_state = GAME_OVER
+            return
+
+        # Level Progression
+        if current_level == 0 and score >= 200:
+            current_level = 1
+            print("Level Up! -> 2")
+        elif current_level == 1 and score >= 500:
+            current_level = 2
+            print("Level Up! -> 3")
+        elif current_level == 2 and score >= 1000:
+            current_level = 3
+            print("Level Up! -> 4")
+        elif current_level == 3 and score >= 1500:
+            current_level = 4
+            spawn_boss()
+            print("BOSS BATTLE START!")
         
-        # Keep player within bounds
+        # Boss Win Condition
+        if current_level == 4:
+            if boss and not boss['active']:
+                # Boss Dead
+                print("YOU WIN!")
+                game_state = GAME_OVER # Reuse screen, maybe change text
+                # We can handle text change in draw_game_over based on score/boss state
+        
+        # Apply Velocity & Friction
+        player_x += player_vx
+        player_y += player_vy
+        
+        # Apply friction
+        friction = 0.85
+        player_vx *= friction
+        player_vy *= friction
+        
+        # Zero out low velocity
+        if abs(player_vx) < 0.1: player_vx = 0
+        if abs(player_vy) < 0.1: player_vy = 0
+
+        # Boundary checks
         player_x = max(-player_bounds_x, min(player_bounds_x, player_x))
         player_y = max(-player_bounds_y, min(player_bounds_y, player_y))
         
+        # Wall bounce
+        if player_x == -player_bounds_x or player_x == player_bounds_x: player_vx = 0
+        if player_y == -player_bounds_y or player_y == player_bounds_y: player_vy = 0
+
         # Update World
         spawn_obstacle()
         update_obstacles()
         
-        spawn_enemy()
+        spawn_pickup()
+        update_pickups()
+        
+        if current_level < 4: # No minions during boss? Or maybe just fewer?
+            spawn_enemy() # Let them spawn for difficulty
+        
         update_enemies()
+        update_enemy_bullets()
+        
+        if current_level == 4:
+            update_boss()
+        
+        spawn_ring()
+        update_rings()
         
         update_bullets()
+        update_missiles()
 
 
 def idle():
@@ -996,7 +1758,7 @@ def main():
     
     glutDisplayFunc(display)
     glutKeyboardFunc(keyboard)
-    glutKeyboardUpFunc(keyboard_up)
+    # glutKeyboardUpFunc removed to comply with spec
     glutSpecialFunc(special)
     glutMouseFunc(mouse)
     glutIdleFunc(idle)
